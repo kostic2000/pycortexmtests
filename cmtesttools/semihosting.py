@@ -18,6 +18,12 @@ class Semihosting(object):
         self.files[2] = sys.stderr
         self.tmps = [None] * 255
 
+    def __set_errno(self, errno):
+        if errno is not None:
+            self.errno = errno
+        else:
+            self.errno = -1
+
     def __get_file(self, h):
         if h < len(self.files) and self.files[h] is not None:
             self.errno = 0
@@ -25,6 +31,7 @@ class Semihosting(object):
         else:
             self.errno = errno.EINVAL
             return None
+
     def close(self, h):
         if h <= 2: return 0
         try:
@@ -36,7 +43,7 @@ class Semihosting(object):
             else:
                 return -1
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return -1
         
     def get_errno(self):
@@ -53,7 +60,7 @@ class Semihosting(object):
             else:
                 return -1
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return -1
         
     def get_cmdline(self):
@@ -71,7 +78,7 @@ class Semihosting(object):
             else:
                 return -1
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return -1
         
     def open(self, name, mode):
@@ -106,7 +113,7 @@ class Semihosting(object):
                 self.files[h] = f
                 return h
             except IOError as e:
-                self.errno = e.errno
+                self.__set_errno(e.errno)
                 return -1
     
     def read(self, h, num):
@@ -117,7 +124,7 @@ class Semihosting(object):
             else:
                 return None
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return None
 
     def readc(self):
@@ -125,21 +132,21 @@ class Semihosting(object):
             c = sys.stdin.read(1)
             return -1 if len(c) == 0 else ord(c)
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return -1
         
     def remove(self, name):
         try:
             os.remove(name)
         except OSError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return self.errno
 
     def rename(self, oldname, newname):
         try:
             os.rename(oldname, newname)
         except OSError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return self.errno
         
     def seek(self, h, abspos):
@@ -150,14 +157,14 @@ class Semihosting(object):
             else:
                 return -1
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return -1
 
     def system(self, cmd):
         try:
             return os.system(cmd)
         except OSError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return self.errno
         
     def time(self):
@@ -173,7 +180,7 @@ class Semihosting(object):
 
             return self.tmps[fid]            
         except OSError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return None
         
     def write(self, h, data):
@@ -185,7 +192,7 @@ class Semihosting(object):
             else:
                 return len(data)
         except IOError as e:
-            self.errno = e.errno
+            self.__set_errno(e.errno)
             return len(data)
         
     def writec(self, c):

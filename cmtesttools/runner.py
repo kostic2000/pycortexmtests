@@ -92,7 +92,7 @@ class Runner(object):
         self.mu.reg_write(arm.UC_ARM_REG_PC, pc)
 
     def handle_semihosting(self, reason, arg):
-       
+
         def read_word(addr):
             return struct.unpack("<I", self.mu.mem_read(addr, 4))[0];
         
@@ -116,7 +116,7 @@ class Runner(object):
        
         if self.semihosting_handler is not None:
             if reason == SEMIHOSTING_SYS_CLOSE:
-                self.semihosting_handler.close(read_word(arg))
+                return self.semihosting_handler.close(read_word(arg))
             elif reason == SEMIHOSTING_SYS_CLOCK:
                 return -1
             elif reason == SEMIHOSTING_SYS_ELAPSED:
@@ -182,6 +182,9 @@ class Runner(object):
                 return 0
             else:   
                 return -1
+            
+        else:
+            return -1
 
     def run(self, count = None):
 
