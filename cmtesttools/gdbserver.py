@@ -1,5 +1,6 @@
 import logging
 import socket
+import binascii
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +48,12 @@ class GdbServer(object):
     def _read_packet(self):
         if self.srv_s is None:
             return None
-        
+
         WAIT_SOP = 0
         WAIT_EOP = 1
     
         state = WAIT_SOP
-        csum = 0
-        packet = ""
+        packet = b""
         
         while True:
        
@@ -64,28 +64,28 @@ class GdbServer(object):
                 return None
 
             if state == WAIT_SOP:
-                if c == "$":
+                if c == b'$':
                     state = WAIT_EOP
-                elif c == "\x03":
+                elif c == b'\x03':
                     logger.debug("received Ctrl+C")
                     return c
 
             elif state == WAIT_EOP:
-                if c == "#":
-                    packet_csum_str = self.s.recv(2)
-                    if len(packet_csum_str) == 0:
-                        return ""
+                if c == b'#':
+                    packet_csum = self.s.recv(2)
+                    if len(packet_csum) == 0:
+                        return b""
                     else:
-                        if csum == int(packet_csum_str, 16):
-                            return packet
+                        csum = sum(packet) & 0xff
+                        if csum == int.from_bytes(binascii.unhexlify(packet_csum)):
+                            return packet.decode()
                         else:
                             logger.error("Invalid checksum")
-                            packet = ""
+                            packet = b""
                             csum = 0
                             state = WAIT_SOP
                 else:
                     packet += c
-                    csum = (csum + ord(c)) & 0xff
 
 
     def wait_packet(self):
@@ -94,7 +94,7 @@ class GdbServer(object):
             if packet is not None:
                 logger.debug("received %r", packet)
                 # acknowledge
-                self.s.send("+")
+                self.s.send(b'+')
             return packet
         except socket.error as e:
             logger.error("%s", e)
@@ -103,26 +103,30 @@ class GdbServer(object):
 
     def should_break(self):
         try:
-            c = self.s.recv(1, socket.MSG_DONTWAIT | socket.MSG_PEEK)
-            if c == "\x03":
+            self.s.setblocking(False)
+            c = self.s.recv(1, socket.MSG_PEEK)
+
+            if c == b'\x03':
                 logger.debug("Received Ctrl+C")
                 self.s.recv(1)
                 return True 
         except socket.error as e:
             if e.errno != socket.errno.EAGAIN and e.errno != socket.errno.EWOULDBLOCK:
                 logger.error("%s", e)
+        finally:
+            self.s.setblocking(True)
+
         return False
 
     def send_reply(self, reply):
-        def checksum(data):
-            checksum = 0
-            for c in data:
-                checksum += ord(c)
-            return checksum & 0xff        
-
         logger.debug("send(%r)", reply)
         try:
-            self.s.send('$%s#%.2x' % (reply, checksum(reply)))
+            brep = reply.encode()
+            csum = sum(brep) & 0xff
+            self.s.send(b'$')
+            self.s.send(brep)
+            self.s.send(b'#')
+            self.s.send(binascii.hexlify(csum.to_bytes(1)))
         except socket.error as e:
             logger.error("%s", e)
             self.s.close()

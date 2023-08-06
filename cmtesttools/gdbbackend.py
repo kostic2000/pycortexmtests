@@ -45,7 +45,7 @@ class GdbBackend(object):
             if self._gdb_server.should_break():
                 self._state = STATE_STOPPED
                 self._gdb_server.send_reply(self._quick_status(0))
-            elif self._brk_points.has_key(address):
+            elif address in self._brk_points:
                 self._state = STATE_STOPPED;
                 self._gdb_server.send_reply(self._quick_status(5, "hwbreak"))
                 
@@ -77,11 +77,11 @@ class GdbBackend(object):
         self._uc.hook_add(uc.UC_HOOK_INTR, self.__hook_intr)          
 
     def _quick_status(self, signal = 5, reason = ""):
-        s = "T%02x" % signal
+        s = f"T{signal:02x}"
         if len(reason) != 0:
             s += reason + ";"
         for ri in self._imp_regs_i:
-            s += "%02x:%s;" % (ri, struct.pack("<I", self._uc.reg_read(self._gen_regs[ri])).encode("hex"))
+            s += "%02x:%s;" % (ri, binascii.hexlify(struct.pack("<I", self._uc.reg_read(self._gen_regs[ri]))).decode())
         return s
 
     def _handle_qmark(self, subcmd):
@@ -95,10 +95,10 @@ class GdbBackend(object):
         self._state = STATE_RUN
     
     def _handle_G(self, subcmd):
-        vals = subcmd.decode("hex")
-        if len(vals) >= len(self._gen_regs_dense):
+        vals = binascii.unhexlify(subcmd.encode())
+        if len(vals) >= len(self._gen_regs_dense) * 4:
             for i in range(len(self._gen_regs_dense)):
-                val = struct.unpack_from("<I", vals, i * 4)
+                val = struct.unpack_from("<I", vals, i * 4)[0]
                 self._uc.reg_write(self._gen_regs_dense[i], val)
             self._gdb_server.send_reply("OK")
         else:
@@ -107,10 +107,10 @@ class GdbBackend(object):
         
     def _handle_g(self, subcmd):
         if len(subcmd) == 0:
-            s = ""
+            pb = b""
             for r in self._gen_regs_dense:
-                s += struct.pack("<I", self._uc.reg_read(r)).encode("hex")
-            self._gdb_server.send_reply(s)
+                pb += binascii.hexlify(struct.pack("<I", self._uc.reg_read(r)))
+            self._gdb_server.send_reply(pb.decode())
         else:
             self._gdb_server.send_reply("")
 
@@ -123,7 +123,7 @@ class GdbBackend(object):
         addr = int(addr, 16)
         size = int(size, 16)
         logger.debug("Received a 'write memory' command (@%#.8x : %d bytes -> %s)", addr, size, data)
-        blob = binascii.unhexlify(data)
+        blob = binascii.unhexlify(data.encode())
         try:
             self._uc.mem_write(addr, blob)
             self._gdb_server.send_reply("OK");
@@ -138,21 +138,21 @@ class GdbBackend(object):
         logger.debug("Received a 'read memory' command (@%#.8x : %d bytes)", addr, size)
         try:
             blob = self._uc.mem_read(addr, size)
-            self._gdb_server.send_reply(binascii.hexlify(blob))
+            self._gdb_server.send_reply(binascii.hexlify(blob).decode())
         except uc.UcError as e:
             logger.debug("%s", e)
             self._gdb_server.send_reply("E01");
             
     def _handle_p(self, subcmd):
-        logger.debug("Recevied 'register read' for %s", subcmd)
+        logger.debug("Received 'register read' for %s", subcmd)
         regi = int(subcmd, 16)
         if regi < len(self._gen_regs and self._gen_regs[regi] is not None):
-            self._gdb_server.send_reply(struct.pack("<I", self._uc.reg_read(self._gen_regs[regi])).encode("hex"))
+            self._gdb_server.send_reply(binascii.hexlify(struct.pack("<I", self._uc.reg_read(self._gen_regs[regi]))).decode())
         else:
             self._gdb_server.send_reply("E01")
             
     def _handle_P(self, subcmd):
-        logger.debug("Recevied 'register write' for %s", subcmd)
+        logger.debug("Received 'register write' for %s", subcmd)
         (regi, val) = subcmd.split("=")
         regi = int(regi, 16)
         val = struct.unpack("<I", binascii.unhexlify(val))[0]
@@ -217,7 +217,7 @@ class GdbBackend(object):
         length = int(length, 16)
         if bk_type == "0" or bk_type == "1":    # software or hardware
             logger.debug("Recevied 'clear breakpoint' @ %04x", addr)
-            if self._brk_points.has_key(addr):
+            if addr in self._brk_points:
                 del self._brk_points[addr]
             self._gdb_server.send_reply("OK")
         else:

@@ -111,7 +111,7 @@ class Runner(object):
             return s
         
         def write_str0(addr, s):
-            self.mu_mem_write(addr, bytearray(s))
+            self.mu_mem_write(addr, s.encode())
             self.mu_mem_write(addr + len(s), b'\0')
        
         if self.semihosting_handler is not None:

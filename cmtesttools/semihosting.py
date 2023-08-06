@@ -74,7 +74,7 @@ class Semihosting(object):
         try:
             f = self.__get_file(h)
             if f is not None:
-                return 1 if f.isatty(f) else 0 
+                return 1 if f.isatty() else 0 
             else:
                 return -1
         except IOError as e:
@@ -120,7 +120,7 @@ class Semihosting(object):
         try:
             f = self.__get_file(h)
             if f is not None:
-                return bytearray(f.read(num))                
+                return f.read(num).encode()
             else:
                 return None
         except IOError as e:
@@ -134,7 +134,7 @@ class Semihosting(object):
         except IOError as e:
             self.__set_errno(e.errno)
             return -1
-        
+
     def remove(self, name):
         try:
             os.remove(name)
